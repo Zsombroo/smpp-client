@@ -1,5 +1,5 @@
 # Custom ignores
-*secrets*.env*
+*secrets*.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
