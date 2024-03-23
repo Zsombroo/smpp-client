@@ -1,15 +1,16 @@
 import asyncio
 import os
+import time
 from contextlib import asynccontextmanager
-from typing import Annotated 
+from typing import Any
 
 import json_logging
 from fastapi import Body
 from fastapi import Depends
 from fastapi import FastAPI
 from fastapi import Request
-from fastapi import status
 from fastapi import Response
+from fastapi import status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -21,6 +22,7 @@ from settings import SmppSettings
 from smpp.api_response import APIError
 from smpp.api_response import APIResponse
 from smpp.api_response import ResponseStatus
+from smpp.api_response import Success
 from smpp.esme import ESME
 from utils.logger import logger
 
@@ -40,10 +42,10 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown")
 
 
-async def capture_body(request: Request):
+def capture_body(request: Request):
     request.state.request_body = {}
     if request.method in ["POST", "PUT", "PATCH"]:
-        request.state.request_body = await request.json()
+        request.state.request_body = request.json()
 
 
 app = FastAPI(
@@ -63,18 +65,18 @@ json_logging.init_request_instrument(app)
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(_, exc: RequestValidationError):
+def validation_exception_handler(_, exc: RequestValidationError):
     error_json = jsonable_encoder(exc.errors())
     return JSONResponse(content=error_json, status_code=422)
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(_, exc: HTTPException):
+def http_exception_handler(_, exc: HTTPException):
     return JSONResponse(content=exc.detail, status_code=exc.status_code)
 
 
 @app.get("/", include_in_schema=False, dependencies=[Depends(capture_body)])
-async def root():
+def root():
     """Micro-service card identifier"""
 
     version: str = "unknown"
@@ -95,36 +97,37 @@ async def root():
     }
 
 
-@app.post('/sms')
-async def send_sms(
-    msisdn: str = Annotated[str, Body(example="79161234567")],
-    message: str = Annotated[str, Body(example="Hello, world!")],
+@app.post('/sms', response_model=APIResponse)
+def send_sms(
+    msisdn: str = Body(...),
+    message: str = Body(...),
 ) -> APIResponse:
     logger.info(f"Send SMS to {msisdn}, message: {message}")
 
-    success: bool = await esme.send_message(msisdn, message)
+    response: dict[str, Any] = esme.send_message(msisdn, message)
 
-    if success:
-        status = ResponseStatus.success
-        status_code = 200
-    else:
-        status = ResponseStatus.failed
-        status_code = 500
+    if response.get("status") == "failed":
+        response: dict[str, Any] = esme.send_message(msisdn, message)
+        if response.get("status") == "failed":
+            raise HTTPException(
+                status_code=response.get("code"),
+                detail=response.get("message"),
+            )
 
     return APIResponse(
-        status=status,
-        status_code=status_code,
-        message={"msisdn": msisdn, "message": message},
+        status=ResponseStatus.success,
+        success=Success(code=response.get("code"), message=response.get("message")),
+        data={"msisdn": msisdn, "message": message},
     )
 
 
 @app.options("/{x:path}", include_in_schema=False)
-async def myoptions() -> Response:
+def myoptions() -> Response:
     return Response(status_code=status.HTTP_200_OK)
 
 
 @app.post('/{x:path}', include_in_schema=False, dependencies=[Depends(capture_body)])
-async def catch_all() -> APIError:
+def catch_all() -> APIError:
     return APIError(
         type="catchall",
         status_code=501,

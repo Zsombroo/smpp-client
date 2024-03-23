@@ -8,6 +8,10 @@ class ResponseStatus(str, Enum):
     success = "success"
     failed = "failed"
 
+class Success(BaseModel):
+    code: int | str
+    message: str
+
 
 class APIError(BaseModel):
     type: str
@@ -29,5 +33,5 @@ class APIError(BaseModel):
 
 class APIResponse(BaseModel):
     status: ResponseStatus
-    status_code: int
-    message: dict
+    success: Success
+    data: dict[str, Any]

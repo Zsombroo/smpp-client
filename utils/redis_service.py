@@ -8,6 +8,7 @@ class RedisService(Redis):
         super().__init__(
             host=settings.redis_host,
             port=settings.redis_port,
+            password=settings.redis_password,
         )
         self.settings = settings
         

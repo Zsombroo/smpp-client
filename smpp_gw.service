@@ -1,0 +1,13 @@
+[Unit]
+Description=SMPP service
+After=network.target
+
+[Service]
+EnvironmentFile=%h/smpp-client/secrets.env
+WorkingDirectory=%h/smpp-client
+ExecStart=%h/smpp-client/run.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
